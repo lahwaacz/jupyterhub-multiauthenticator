@@ -30,7 +30,7 @@ The same Authenticator class can be used several to support different providers.
 """
 from jupyterhub.auth import Authenticator
 from jupyterhub.utils import url_path_join
-from traitlets import List
+from traitlets import Bool, List
 
 PREFIX_SEPARATOR = ":"
 
@@ -67,6 +67,23 @@ class MultiAuthenticator(Authenticator):
 
     authenticators = List(help="The subauthenticators to use", config=True)
 
+    use_username_prefix = Bool(
+        True,
+        config=True,
+        help="""Use a subauthenticator-specific prefix for usernames.
+
+        If ``True``, a prefix based on the subauthenticator's ``service_name``
+        or ``login_service`` is added to authenticated user names. This
+        prevents username conflicts and ensures that same usernames from
+        different identity providers are mapped to different users in
+        JupyterHub.
+
+        If ``False``, usernames from the subauthenticators are not modified.
+        This can be used to map usernames from different identity providers
+        to the same JupyterHub user.
+        """,
+    )
+
     def __init__(self, *arg, **kwargs):
         super().__init__(*arg, **kwargs)
         self._authenticators = []
@@ -80,9 +97,12 @@ class MultiAuthenticator(Authenticator):
                 url_scope = url_scope_authenticator
 
                 @property
-                def username_prefix(self):
-                    prefix = f"{getattr(self, 'service_name', self.login_service)}{PREFIX_SEPARATOR}"
-                    return self.normalize_username(prefix)
+                def username_prefix(wrapper):
+                    if self.use_username_prefix is True:
+                        prefix = f"{getattr(wrapper, 'service_name', wrapper.login_service)}{PREFIX_SEPARATOR}"
+                        return wrapper.normalize_username(prefix)
+                    else:
+                        return ""
 
                 async def authenticate(self, handler, data=None, **kwargs):
                     response = await super().authenticate(handler, data, **kwargs)
